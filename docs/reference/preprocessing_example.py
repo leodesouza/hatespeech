@@ -52,3 +52,24 @@ model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy']
 
 # Train the model with your data
 # model.fit([text_data, image_data], labels, epochs=...)
+
+
+# ==================
+
+import concurrent.futures
+from keras.preprocessing.image import load_img, img_to_array
+import numpy as np
+
+def preprocess_image(img_file, target_size):
+    _img = load_img(img_file, target_size=target_size)
+    return img_to_array(_img)
+
+def preprocess_images(self):
+    np_array = []
+    target_size = (898, 500)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [executor.submit(preprocess_image, img_file, target_size) for img_file in self.images_path]
+        for future in concurrent.futures.as_completed(futures):
+            np_array.append(future.result())
+    self.image_data = np.array(np_array)
+

@@ -1,14 +1,39 @@
+from configs.database import database_path
 import json
 import os
+import tensorflow as tf
+import pandas
+from sklearn.model_selection import train_test_split
 
-from configs.database import database_path
 
-
-# from abc
 class DatasetLoader:
     def __init__(self):
+        self.labels_val = None
+        self.tweet_text_val = None
+        self.img_resized_val = None
+        self.val_hatespeech_dataset = None
+        self.val_labels_dataset = None
+        self.val_text_dataset = None
+        self.val_image_dataset = None
+        self.test_hatespeech_dataset = None
+        self.test_dataset = None
+        self.test_labels_dataset = None
+        self.test_text_dataset = None
+        self.test_image_dataset = None
+        self.train_labels_dataset = None
+        self.train_text_dataset = None
+        self.train_image_dataset = None
+        self.labels_test = None
+        self.labels_train = None
+        self.tweet_text_test = None
+        self.tweet_text_train = None
+        self.img_resized_test = None
+        self.img_resized_train = None
+        self.validation_data = None
+        self.train_data = None
+        self.train_hatespeech_dataset = None
         self.img_resized_files = []
-        self.img_txt_files = []
+        self.tweet_text = []
         self.labels = []
 
     def load_dataset(self):
@@ -17,7 +42,7 @@ class DatasetLoader:
         _labels = self.labels
 
         self.load_img_txt_files()
-        texts = [item['img_text'] for item in self.img_txt_files]
+        texts = [item['img_text'] for item in self.tweet_text]
 
         self.load_img_resized_files()
         images_path = self.img_resized_files
@@ -35,7 +60,7 @@ class DatasetLoader:
                 data = json.load(file)
                 all_json_files.append(data)
 
-        self.img_txt_files = all_json_files
+        self.tweet_text = all_json_files
 
     def load_img_resized_files(self):
         img_resized_path = database_path['img_resized_path']
@@ -45,6 +70,7 @@ class DatasetLoader:
             if file_name.endswith('.jpg'):
                 img_resized_file_path = os.path.join(img_resized_path, file_name)
                 self.img_resized_files.append(img_resized_file_path)
+        return self.img_resized_files
 
     def load_labels(self):
         # MMHS150K_GT
@@ -59,7 +85,72 @@ class DatasetLoader:
             result_string = ','.join(map(str, _labels))
             self.labels.append(result_string)
 
+    def load_and_preprocess_image(self, image_path_file):
+        img = tf.io.read_file(image_path_file)
+        img = tf.image.decode_jpeg(img, channels=3)
+        target_size = (224, 224)
+        img = tf.image.resize(img, target_size)
+        img /= 255.0  # normalize to [0,1]
+        return img
 
+    def load_mmhs150k(self):
+        # MMHS150K_GT
+        dataset_file_path = database_path['MMHS150K_GT_json_file']
+        # self.img_resized_files = self.load_img_resized_files()
+        self.tweet_text = []
+        self.labels = []
+        dict_dataset = None
+        with open(dataset_file_path, 'r') as file:
+            dict_dataset = json.load(file)
 
+        img_resized_path = database_path['img_resized_path']
+        for key in dict_dataset:
+            info = dict_dataset[key]
+            _labels = info['labels']
+            result_string = ','.join(map(str, _labels))
+            self.labels.append(result_string)
+            text = info['tweet_text']
+            self.tweet_text.append(text)
+            img_resized_file_path = os.path.join(img_resized_path, f'{key}.jpg')
+            self.img_resized_files.append(img_resized_file_path)
 
+        # split the dataset to test and validation
+        self.img_resized_train, img_resized_temp, self.tweet_text_train, tweet_text_temp, \
+            self.labels_train, labels_temp = train_test_split(self.img_resized_files, self.tweet_text, self.labels, test_size=0.2, random_state=42)
 
+        self.img_resized_val, self.img_resized_test,  self.tweet_text_val, self.tweet_text_test, \
+            self.labels_val, self.labels_test = train_test_split(img_resized_temp, tweet_text_temp, labels_temp, test_size=0.2, random_state=42)
+
+        # create a slice of the dataset to train
+        self.train_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_train)
+        self.train_image_dataset = self.train_image_dataset.map(self.load_and_preprocess_image)
+        self.train_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_train)
+        self.train_labels_dataset = tf.data.Dataset.from_tensor_slices(self.labels_train)
+        # combine training datasets
+        self.train_hatespeech_dataset = tf.data.Dataset.zip(self.train_image_dataset,
+                                                            self.train_text_dataset,
+                                                            self.train_labels_dataset)
+        batch_size = 32
+        self.train_hatespeech_dataset = self.train_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+        # create a slice of the dataset to test
+        self.test_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_test)
+        self.test_image_dataset = self.test_image_dataset.map(self.load_and_preprocess_image)
+        self.test_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_test)
+        self.test_labels_dataset = tf.data.Dataset.from_tensor_slices(self.labels_test)
+        # combine the test datasets
+        self.test_hatespeech_dataset = tf.data.Dataset.zip(self.test_image_dataset,
+                                                           self.test_text_dataset,
+                                                           self.test_labels_dataset)
+        self.test_hatespeech_dataset = self.test_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+        # create a slice of the dataset to validate
+        self.val_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_val)
+        self.val_image_dataset = self.val_image_dataset.map(self.load_and_preprocess_image)
+        self.val_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_val)
+        self.val_labels_dataset = tf.data.Dataset.from_tensor_slices(self.labels_val)
+        # combine the validation datasets
+        self.val_hatespeech_dataset = tf.data.Dataset.zip(self.val_image_dataset,
+                                                          self.val_text_dataset,
+                                                          self.val_labels_dataset)
+        self.val_hatespeech_dataset = self.val_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)

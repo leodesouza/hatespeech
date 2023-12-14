@@ -1,16 +1,19 @@
+import concurrent.futures
+
 from keras.models import Model
 from keras.layers import Input, Embedding, LSTM, Dense, Flatten, concatenate
-from keras.src.preprocessing.text import Tokenizer
-from keras.src.utils import pad_sequences, img_to_array, load_img
+from keras.preprocessing.text import Tokenizer
+from keras.utils import plot_model
+from keras.callbacks import EarlyStopping
+from keras.preprocessing.sequence import pad_sequences
 from data.dataset import DatasetLoader
 import numpy as np
-
-import tensorflow as tf
 
 
 class Hatespeech:
 
     def __init__(self):
+        self.dataset_loader = DatasetLoader()
         self.model = Model()
         self.image_data = None
         self.text_data = None
@@ -20,15 +23,15 @@ class Hatespeech:
         self.max_words = 1000
         self.max_sequence_length = 20
 
-    def build(self):
-        # Text input branch
-        text_input = Input(shape=(self.max_sequence_length,), dtype='int32')
+    def create(self):
+        # Text
+        text_input = Input(shape=(self.max_sequence_length,), dtype='int32', name='text_input')
         embedded_text = Embedding(input_dim=self.max_words, output_dim=50, input_length=self.max_sequence_length)(
             text_input)
         lstm_text = LSTM(50)(embedded_text)
 
-        # Image input branch
-        image_input = Input(Shape=(224, 224, 3))
+        # Image
+        image_input = Input(shape=(224, 224, 3), name='image_input')
         flattened_image = Flatten()(image_input)
         merged = concatenate([lstm_text, flattened_image])
         dense1 = Dense(128, activation='relu')(merged)
@@ -36,30 +39,19 @@ class Hatespeech:
 
         self.model = Model(inputs=[text_input, image_input], outputs=output)
 
-    def load_dataset(self):
-        loader = DatasetLoader()
-        _labels, _texts, _images_path = loader.load_dataset()
-        self.labels = _labels
-        self.texts = _texts
-        self.images_path = _images_path
+    def build(self):
+        self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        self.model.summary()
+        plot_model(self.model, show_shapes=True, to_file='model.png', show_layer_names=True)
 
-    def pre_processdata(self):
-        self.preprocess_text()
-        self.preprocess_images()
+    def load_dataset(self):
+        self.dataset_loader.load_mmhs150k()
 
     def preprocess_text(self):
         tokenizer = Tokenizer(num_words=self.max_words)
-        tokenizer.fit_on_texts(self.texts)
-        sequences = tokenizer.texts_to_sequences(self.texts)
+        tokenizer.fit_on_texts(self.dataset_loader.tweet_text)
+        sequences = tokenizer.texts_to_sequences(self.dataset_loader.tweet_text)
         self.text_data = pad_sequences(sequences, maxlen=self.max_sequence_length)
-
-    def preprocess_images(self):
-        np_array = []
-        for img_file in self.images_path:
-            _img = load_img(img_file, target_size=(898, 500))
-            np_array.append(img_to_array(_img))
-        self.image_data = np.array(np_array)
-        j = 10
 
     def set_training_parameters(self):
         pass
@@ -68,7 +60,17 @@ class Hatespeech:
         pass
 
     def train(self):
-        self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+        self.model.fit(self.dataset_loader.train_hatespeech_dataset,
+                       validation_data=self.dataset_loader.val_hatespeech_dataset,
+                       epochs=100,
+                       verbose=1,
+                       callbacks=[early_stopping])
+
+        self.model.fit(x=[])
 
     def evaluate(self):
-        pass
+        results = self.model.evaluate(self.dataset_loader.test_hatespeech_dataset)
+        print("Test loss: ", results[0])
+        print("Test accuracy: ", results[1])

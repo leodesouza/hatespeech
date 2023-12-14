@@ -6,7 +6,8 @@ from models.multimodel import Hatespeech
 def run():
     model = Hatespeech()
     model.load_dataset()
-    model.pre_processdata()
+    model.preprocess_text()
+    model.create()
     model.build()
     model.train()
     model.evaluate()
