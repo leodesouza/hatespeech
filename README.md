@@ -6,6 +6,9 @@ Project folder structure and best practices inspired by The AI Summer
 1: https://github.com/The-AI-Summer/Deep-Learning-In-Production/tree/master/1.%20From%20a%20notebook%20to%20serving%20millions%20of%20users
 2: https://theaisummer.com/best-practices-deep-learning-code/
 
+Best Practices
+3 -https://github.com/The-AI-Summer/Deep-Learning-In-Production/tree/master/2.%20Writing%20Deep%20Learning%20code%3A%20Best%20Practises
+
 **dataloader** is quite self-explanatory. All the data loading and data preprocessing classes and functions live here.
 
 **evaluation** is a collection of code that aims to evaluate the performance and accuracy of our model.
