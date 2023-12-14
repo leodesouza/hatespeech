@@ -2,12 +2,14 @@ from configs.database import database_path
 import json
 import os
 import tensorflow as tf
-import pandas
 from sklearn.model_selection import train_test_split
+from keras.preprocessing.text import Tokenizer
+from keras.preprocessing.sequence import pad_sequences
 
 
 class DatasetLoader:
     def __init__(self):
+        self.tokenizer = None
         self.labels_val = None
         self.tweet_text_val = None
         self.img_resized_val = None
@@ -64,7 +66,6 @@ class DatasetLoader:
 
     def load_img_resized_files(self):
         img_resized_path = database_path['img_resized_path']
-        # with open(database_path['database_path'])
         self.img_resized_files = []
         for file_name in os.listdir(img_resized_path):
             if file_name.endswith('.jpg'):
@@ -114,12 +115,16 @@ class DatasetLoader:
             img_resized_file_path = os.path.join(img_resized_path, f'{key}.jpg')
             self.img_resized_files.append(img_resized_file_path)
 
+        self.tweet_text = self.converto_to_tokenized_tweet_texts(self.tweet_text)
+
         # split the dataset to test and validation
         self.img_resized_train, img_resized_temp, self.tweet_text_train, tweet_text_temp, \
-            self.labels_train, labels_temp = train_test_split(self.img_resized_files, self.tweet_text, self.labels, test_size=0.2, random_state=42)
+            self.labels_train, labels_temp = train_test_split(self.img_resized_files, self.tweet_text, self.labels,
+                                                              test_size=0.2, random_state=42)
 
-        self.img_resized_val, self.img_resized_test,  self.tweet_text_val, self.tweet_text_test, \
-            self.labels_val, self.labels_test = train_test_split(img_resized_temp, tweet_text_temp, labels_temp, test_size=0.2, random_state=42)
+        self.img_resized_val, self.img_resized_test, self.tweet_text_val, self.tweet_text_test, \
+            self.labels_val, self.labels_test = train_test_split(img_resized_temp, tweet_text_temp, labels_temp,
+                                                                 test_size=0.2, random_state=42)
 
         # create a slice of the dataset to train
         self.train_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_train)
@@ -130,7 +135,7 @@ class DatasetLoader:
         self.train_hatespeech_dataset = tf.data.Dataset.zip(self.train_image_dataset,
                                                             self.train_text_dataset,
                                                             self.train_labels_dataset)
-        batch_size = 32
+        batch_size = 1
         self.train_hatespeech_dataset = self.train_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
         # create a slice of the dataset to test
@@ -154,3 +159,14 @@ class DatasetLoader:
                                                           self.val_text_dataset,
                                                           self.val_labels_dataset)
         self.val_hatespeech_dataset = self.val_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+    def converto_to_tokenized_tweet_texts(self, tweet_text):
+        self.tokenizer = Tokenizer(1000)
+        self.tokenizer.fit_on_texts(tweet_text)
+        sequences = self.tokenizer.texts_to_sequences(tweet_text)
+        return pad_sequences(sequences)
+
+    def get_tokenized_tweet_texts(self):
+        if not self.tokenizer or not isinstance(self.tokenizer, Tokenizer):
+            raise ValueError("Tokenizer is not ready yet")
+        return self.tokenizer

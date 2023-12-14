@@ -2,10 +2,8 @@ import concurrent.futures
 
 from keras.models import Model
 from keras.layers import Input, Embedding, LSTM, Dense, Flatten, concatenate
-from keras.preprocessing.text import Tokenizer
 from keras.utils import plot_model
 from keras.callbacks import EarlyStopping
-from keras.preprocessing.sequence import pad_sequences
 from data.dataset import DatasetLoader
 import numpy as np
 
@@ -24,10 +22,13 @@ class Hatespeech:
         self.max_sequence_length = 20
 
     def create(self):
-        # Text
-        text_input = Input(shape=(self.max_sequence_length,), dtype='int32', name='text_input')
-        embedded_text = Embedding(input_dim=self.max_words, output_dim=50, input_length=self.max_sequence_length)(
-            text_input)
+
+        tokenizer = self.dataset_loader.get_tokenized_tweet_texts()
+        word_size = len(tokenizer.word_index) + 1
+        text_input = Input(shape=(self.max_sequence_length,), dtype='float32', name='text_input')
+        embedded_text = Embedding(input_dim=word_size,
+                                  output_dim=50,
+                                  input_length=self.max_sequence_length)(text_input)
         lstm_text = LSTM(50)(embedded_text)
 
         # Image
@@ -38,20 +39,21 @@ class Hatespeech:
         output = Dense(1, activation='sigmoid')(dense1)
 
         self.model = Model(inputs=[text_input, image_input], outputs=output)
+        model_inputs = self.model.input
+        for i, input_layer in enumerate(model_inputs):
+            print(f"Input {i + 1}:")
+            print(f"Name: {input_layer.name}")
+            print(f"Shape: {input_layer.shape}")
+            print(f"Dtype: {input_layer.dtype}")
+            print()
 
     def build(self):
         self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
         self.model.summary()
-        plot_model(self.model, show_shapes=True, to_file='model.png', show_layer_names=True)
+        # plot_model(self.model, show_shapes=True, to_file='model.png', show_layer_names=True)
 
     def load_dataset(self):
         self.dataset_loader.load_mmhs150k()
-
-    def preprocess_text(self):
-        tokenizer = Tokenizer(num_words=self.max_words)
-        tokenizer.fit_on_texts(self.dataset_loader.tweet_text)
-        sequences = tokenizer.texts_to_sequences(self.dataset_loader.tweet_text)
-        self.text_data = pad_sequences(sequences, maxlen=self.max_sequence_length)
 
     def set_training_parameters(self):
         pass
