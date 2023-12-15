@@ -109,9 +109,11 @@ class DatasetLoader:
         img_resized_path = database_path['img_resized_path']
         for key in dict_dataset:
             info = dict_dataset[key]
-            _labels = info['labels']
-            result_string = ','.join(map(str, _labels))
-            self.labels.append(result_string)
+            # 0 NotHate - 1 Hate
+            if len(info['labels']) == 1 and info['labels'][0] == 0:
+                self.labels.append('0')
+            else:
+                self.labels.append('1')
             text = info['tweet_text']
             self.tweet_text.append(text)
             img_resized_file_path = os.path.join(img_resized_path, f'{key}.jpg')
