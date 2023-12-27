@@ -5,6 +5,30 @@ from keras.utils import plot_model
 from keras.callbacks import EarlyStopping
 from data.dataset import DatasetLoader
 import matplotlib.pyplot as plt
+import numpy as np
+
+
+def plot_training_result(training_history):
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.plot(training_history.history['loss'], label='Training Loss')
+    plt.plot(training_history.history['val_loss'], label='Validation Loss')
+    plt.title('Training and Validation Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+
+    # Training and accuracy
+    plt.subplot(1, 2, 2)
+    plt.plot(training_history.history['accuracy'], label='Training Accuracy')
+    plt.plot(training_history.history['val_accuracy'], label='Validation Accuracy')
+    plt.title('Training and Validation Accuracy')
+    plt.xlabel('Epochs')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig('training_plot.png')
+    plt.show()
 
 
 class Hatespeech:
@@ -41,13 +65,11 @@ class Hatespeech:
         flattened_image = Flatten()(image_input)
         flattened_image = Dropout(0.2)(flattened_image)
 
-        # Merge Pathways
         merged = concatenate([lstm_text, flattened_image])
         merged = Dense(128, activation='relu')(merged)
         merged = BatchNormalization()(merged)
         merged = Dropout(0.3)(merged)
 
-        # Output Layer
         output = Dense(1, activation='sigmoid')(merged)
 
         self.model = Model(inputs=[text_input, image_input], outputs=output)
@@ -61,7 +83,8 @@ class Hatespeech:
             print()
 
     def build(self):
-        self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'], weighted_metrics=[])
+        # weighted_metrics=[]
+        self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
         self.model.summary()
         plot_model(self.model, show_shapes=True, to_file='model.png', show_layer_names=True)
 
@@ -77,26 +100,28 @@ class Hatespeech:
     def train(self):
         iterator = self.dataset_loader.train_hatespeech_dataset.as_numpy_iterator()
         text_data, image_data, labels = next(iterator)
-        # early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+        val_iterator = next(self.dataset_loader.val_hatespeech_dataset.as_numpy_iterator())
+        # val_text_data, val_image_data, val_labels_data = next(val_iterator)
+        val_text_data = val_iterator['text_data']
+        val_image_data = val_iterator['image_data']
+        val_labels_data = val_iterator['label_data']
+        # val_labels_data = np.array(self.dataset_loader.labels_val)
+
+        early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
         # callbacks=[early_stopping]
-        training_history = self.model.fit([text_data, image_data],
-                       labels,
-                       batch_size=31,
-                       epochs=10)
-
-    def plot_training_result(self, training_history):
-        plt.figure(figsize=(10, 5))
-        plt.subplot(1, 2, 1)
-        plt.plot(training_history.history['loss'], label='Training Loss')
-        plt.plot(training_history.history['val_loss'], label='Validation Loss')
-        plt.title('Training and Validation Loss')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.Legend()
-
-        #Training and accuracy
-        plt.subplot(1, 2, 3)
-
+        # training_history = self.model.fit([text_data, image_data],
+        #                                   labels,
+        #                                   batch_size=31,
+        #                                   epochs=10,
+        #                                   validation_data=(val_text_data, val_image_data, val_labels_data),
+        #                                   callbacks=[early_stopping])
+        # plot_training_result(training_history)
+        training_history = self.model.fit(x=[text_data, image_data],
+                                          y=labels,
+                                          batch_size=31,
+                                          epochs=10,
+                                          validation_data=([val_text_data, val_image_data], val_labels_data))
+        plot_training_result(training_history)
 
     def evaluate(self):
         iterator = self.dataset_loader.test_hatespeech_dataset.as_numpy_iterator()
