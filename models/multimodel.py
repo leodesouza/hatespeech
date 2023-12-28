@@ -28,7 +28,7 @@ def plot_training_result(training_history):
     plt.legend()
     plt.tight_layout()
     plt.savefig('training_plot.png')
-    plt.show()
+    # plt.show()
 
 
 class Hatespeech:
@@ -107,7 +107,7 @@ class Hatespeech:
         val_labels_data = val_iterator['label_data']
         # val_labels_data = np.array(self.dataset_loader.labels_val)
 
-        early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+        early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
         # callbacks=[early_stopping]
         # training_history = self.model.fit([text_data, image_data],
         #                                   labels,
@@ -118,9 +118,9 @@ class Hatespeech:
         # plot_training_result(training_history)
         training_history = self.model.fit(x=[text_data, image_data],
                                           y=labels,
-                                          batch_size=31,
-                                          epochs=10,
-                                          validation_data=([val_text_data, val_image_data], val_labels_data))
+                                          epochs=250,
+                                          validation_data=([val_text_data, val_image_data], val_labels_data),
+                                          callbacks=[early_stopping])
         plot_training_result(training_history)
 
     def evaluate(self):

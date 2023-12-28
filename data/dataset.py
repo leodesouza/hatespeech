@@ -150,7 +150,7 @@ class DatasetLoader:
         # combine training datasets
         self.train_hatespeech_dataset = tf.data.Dataset.zip(
             (self.train_text_dataset, self.train_image_dataset, self.train_labels_dataset))
-        batch_size = 32
+        batch_size = 128
         self.train_hatespeech_dataset = self.train_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
         # create a slice of the dataset to test
