@@ -8,6 +8,15 @@ from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 
 
+def load_and_preprocess_image(image_path_file):
+    img = tf.io.read_file(image_path_file)
+    img = tf.image.decode_jpeg(img, channels=3)
+    target_size = (224, 224)
+    img = tf.image.resize(img, target_size)
+    img /= 255.0  # normalize to [0,1]
+    return img
+
+
 class DatasetLoader:
     def __init__(self):
         self.tokenizer = None
@@ -41,16 +50,12 @@ class DatasetLoader:
         self.label_encoder = LabelEncoder()
 
     def load_dataset(self):
-
         self.load_labels()
         _labels = self.labels
-
         self.load_img_txt_files()
         texts = [item['img_text'] for item in self.tweet_text]
-
         self.load_img_resized_files()
         images_path = self.img_resized_files
-
         return _labels, texts, images_path
 
     def load_img_txt_files(self):
@@ -59,7 +64,6 @@ class DatasetLoader:
         for file_name in os.listdir(img_txt_path):
             if file_name.endswith('.json'):
                 img_txt_file = os.path.join(img_txt_path, file_name)
-
             with open(img_txt_file, 'r') as file:
                 data = json.load(file)
                 all_json_files.append(data)
@@ -78,23 +82,13 @@ class DatasetLoader:
     def load_labels(self):
         # MMHS150K_GT
         dataset_file_path = database_path['MMHS150K_GT_json_file']
-        dict_dataset = None
         with open(dataset_file_path, 'r') as file:
             dict_dataset = json.load(file)
-
         for key in dict_dataset:
             info = dict_dataset[key]
             _labels = info['labels']
             result_string = ','.join(map(str, _labels))
             self.labels.append(result_string)
-
-    def load_and_preprocess_image(self, image_path_file):
-        img = tf.io.read_file(image_path_file)
-        img = tf.image.decode_jpeg(img, channels=3)
-        target_size = (224, 224)
-        img = tf.image.resize(img, target_size)
-        img /= 255.0  # normalize to [0,1]
-        return img
 
     def load_mmhs150k(self):
         # MMHS150K_GT
@@ -144,7 +138,7 @@ class DatasetLoader:
         # create a slice of the dataset to train
         self.train_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_train)
         self.train_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_train)
-        self.train_image_dataset = self.train_image_dataset.map(self.load_and_preprocess_image)
+        self.train_image_dataset = self.train_image_dataset.map(load_and_preprocess_image)
         self.train_labels_dataset = tf.data.Dataset.from_tensor_slices(self.labels_train)
 
         # combine training datasets
@@ -156,7 +150,7 @@ class DatasetLoader:
         # create a slice of the dataset to test
         self.test_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_test)
         self.test_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_test)
-        self.test_image_dataset = self.test_image_dataset.map(self.load_and_preprocess_image)
+        self.test_image_dataset = self.test_image_dataset.map(load_and_preprocess_image)
         self.test_labels_dataset = tf.data.Dataset.from_tensor_slices(self.labels_test)
 
         # combine the test datasets
@@ -168,7 +162,7 @@ class DatasetLoader:
         # create a slice of the dataset to validation
         self.val_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_val)
         self.val_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_val)
-        self.val_image_dataset = self.val_image_dataset.map(self.load_and_preprocess_image)
+        self.val_image_dataset = self.val_image_dataset.map(load_and_preprocess_image)
         self.val_labels_dataset = tf.data.Dataset.from_tensor_slices(self.labels_val)
 
         self.val_hatespeech_dataset = tf.data.Dataset.zip({

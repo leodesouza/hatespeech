@@ -5,7 +5,10 @@ from keras.utils import plot_model
 from keras.callbacks import EarlyStopping
 from data.dataset import DatasetLoader
 import matplotlib.pyplot as plt
-import numpy as np
+
+
+def plot_evaluate_result(eval_metrics):
+    pass
 
 
 def plot_training_result(training_history):
@@ -49,24 +52,16 @@ class Hatespeech:
         word_size = len(tokenizer.word_index) + 1
         text_input = Input(shape=(1,), dtype='int32', name='text_input')
         embedded_text = Embedding(input_dim=word_size,
-                                  output_dim=50,
+                                  output_dim=128,
                                   input_length=self.max_sequence_length)(text_input)
-        lstm_text = LSTM(50)(embedded_text)
-
-        # Image
-        # image_input = Input(shape=(224, 224, 3), name='image_input')
-        # flattened_image = Flatten()(image_input)
-        #
-        # merged = concatenate([lstm_text, flattened_image])
-        # dense1 = Dense(128, activation='relu')(merged)
-        # output = Dense(1, activation='softmax')(dense1)
+        lstm_text = LSTM(128)(embedded_text)
 
         image_input = Input(shape=(224, 224, 3), name='image_input')
         flattened_image = Flatten()(image_input)
         flattened_image = Dropout(0.2)(flattened_image)
 
         merged = concatenate([lstm_text, flattened_image])
-        merged = Dense(128, activation='relu')(merged)
+        merged = Dense(300, activation='relu')(merged)
         merged = BatchNormalization()(merged)
         merged = Dropout(0.3)(merged)
 
@@ -101,21 +96,10 @@ class Hatespeech:
         iterator = self.dataset_loader.train_hatespeech_dataset.as_numpy_iterator()
         text_data, image_data, labels = next(iterator)
         val_iterator = next(self.dataset_loader.val_hatespeech_dataset.as_numpy_iterator())
-        # val_text_data, val_image_data, val_labels_data = next(val_iterator)
         val_text_data = val_iterator['text_data']
         val_image_data = val_iterator['image_data']
         val_labels_data = val_iterator['label_data']
-        # val_labels_data = np.array(self.dataset_loader.labels_val)
-
         early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
-        # callbacks=[early_stopping]
-        # training_history = self.model.fit([text_data, image_data],
-        #                                   labels,
-        #                                   batch_size=31,
-        #                                   epochs=10,
-        #                                   validation_data=(val_text_data, val_image_data, val_labels_data),
-        #                                   callbacks=[early_stopping])
-        # plot_training_result(training_history)
         training_history = self.model.fit(x=[text_data, image_data],
                                           y=labels,
                                           epochs=250,
@@ -128,6 +112,7 @@ class Hatespeech:
         text_test_data, image_test_data, labels_test_data = next(iterator)
 
         results = self.model.evaluate([text_test_data, image_test_data], labels_test_data)
+        plot_evaluate_result(results)
         print("Test loss: ", results[0])
         print("Test accuracy: ", results[1])
         pass
