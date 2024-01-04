@@ -1,3 +1,5 @@
+from keras_preprocessing.image import ImageDataGenerator
+
 from configs.database import database_path
 import json
 import os
@@ -7,18 +9,51 @@ from sklearn.preprocessing import LabelEncoder
 from keras.preprocessing.text import Tokenizer
 from keras.preprocessing.sequence import pad_sequences
 
+data_aug = ImageDataGenerator(
+    rotation_range=20,
+    width_shift_range=0.2,
+    height_shift_range=0.2,
+    shear_range=0.2,
+    zoom_range=0.2,
+    horizontal_flip=True,
+    rescale=1./255
+)
+
 
 def load_and_preprocess_image(image_path_file):
     img = tf.io.read_file(image_path_file)
+    # img = tf.image.decode_jpeg(img, channels=3)
     img = tf.image.decode_jpeg(img, channels=3)
-    target_size = (224, 224)
+    target_size = (299, 299)
     img = tf.image.resize(img, target_size)
+    # img = data_aug.random_transform(img)
     img /= 255.0  # normalize to [0,1]
+    # img = tf.io.read_file(image_path_file)
+    # print(f'IMAGE FILE{image_path_file}')
+    # img = tf.image.decode_image(img, channels=3)
+    # img = tf.image.resize(img, (299, 299))
+    # img = tf.cast(img, tf.float32)
+    # img = data_aug.random_transform(img)
     return img
 
 
 class DatasetLoader:
     def __init__(self):
+        self.image_text_tokenizer = None
+        self.val_image_text_dataset = None
+        self.val_ids_dataset = None
+        self.test_image_text_dataset = None
+        self.test_ids_dataset = None
+        self.train_image_text_dataset = None
+        self.train_ids_dataset = None
+        self.ids_val = None
+        self.ids_test = None
+        self.ids_train = None
+        self.image_text_val = None
+        self.image_text_train = None
+        self.image_text_test = None
+        self.Ids = None
+        self.image_text = None
         self.tokenizer = None
         self.labels_val = None
         self.tweet_text_val = None
@@ -93,89 +128,137 @@ class DatasetLoader:
     def load_mmhs150k(self):
         # MMHS150K_GT
         dataset_file_path = database_path['MMHS150K_GT_json_file']
+        image_text_path = database_path['img_txt_path']
+
         # self.img_resized_files = self.load_img_resized_files()
         self.tweet_text = []
         self.labels = []
+        self.image_text = []
+        self.Ids = []
         dict_dataset = None
         with open(dataset_file_path, 'r') as file:
             dict_dataset = json.load(file)
 
         img_resized_path = database_path['img_resized_path']
         for key in dict_dataset:
+            self.Ids.append(key)
             info = dict_dataset[key]
             # 0 NotHate - 1 Hate
             if len(info['labels']) == 1 and info['labels'][0] == 0:
                 self.labels.append(0)
             else:
                 self.labels.append(1)
+            # self.labels.append(info['labels'])
             text = info['tweet_text']
             self.tweet_text.append(text)
+            img_text_file_path = os.path.join(image_text_path, f'{key}.json')
+            if os.path.exists(img_text_file_path):
+                with open(img_text_file_path, 'r') as file:
+                    img_text_dict = json.load(file)
+                    txt = img_text_dict['img_text']
+                    self.image_text.append(txt)
+            else:
+                self.image_text.append('')
+
             img_resized_file_path = os.path.join(img_resized_path, f'{key}.jpg')
             self.img_resized_files.append(img_resized_file_path)
 
-        self.tweet_text = self.converto_to_tokenized_tweet_texts(self.tweet_text)
+        combined_data = list(zip(self.Ids, self.tweet_text, self.image_text, self.img_resized_files, self.labels))
+        train_combined_data, combined_data_temp, = train_test_split(combined_data, test_size=0.4, random_state=42)
+        test_combined_data, val_combined_data, = train_test_split(combined_data_temp, test_size=0.5, random_state=42)
 
-        # self.labels = self.label_encoder.fit_transform(self.labels)
-        # split the dataset to test and validation
-        self.tweet_text_train, tweet_text_temp = train_test_split(self.tweet_text, test_size=0.4,
-                                                                  random_state=42)
-        self.tweet_text_test, self.tweet_text_val = train_test_split(tweet_text_temp,
-                                                                     test_size=0.5,
-                                                                     random_state=42)
+        self.ids_train, self.tweet_text_train, self.image_text_train, self.img_resized_train, self.labels_train = zip(
+            *train_combined_data)
+        self.ids_test, self.tweet_text_test, self.image_text_test, self.img_resized_test, self.labels_test = zip(
+            *test_combined_data)
+        self.ids_val, self.tweet_text_val, self.image_text_val, self.img_resized_val, self.labels_val = zip(
+            *val_combined_data)
 
-        self.img_resized_train, img_resized_temp = train_test_split(self.img_resized_files,
-                                                                    test_size=0.4,
-                                                                    random_state=42)
-        self.img_resized_test, self.img_resized_val = train_test_split(img_resized_temp,
-                                                                       test_size=0.5,
-                                                                       random_state=42)
+        self.tweet_text_test = self.converto_to_tokenized_tweet_texts(self.tweet_text_test)
+        self.tweet_text_val = self.converto_to_tokenized_tweet_texts(self.tweet_text_val)
+        self.tweet_text_train = self.converto_to_tokenized_tweet_texts(self.tweet_text_train)
 
-        self.labels_train, labels_temp = train_test_split(self.labels, test_size=0.4,
-                                                          random_state=42)
-        self.labels_test, self.labels_val = train_test_split(labels_temp, test_size=0.5,
-                                                             random_state=42)
+        self.image_text_test = self.converto_to_tokenized_image_texts(self.image_text_test)
+        self.image_text_val = self.converto_to_tokenized_image_texts(self.image_text_val)
+        self.image_text_train = self.converto_to_tokenized_image_texts(self.image_text_train)
+
+        # # self.labels = self.label_encoder.fit_transform(self.labels)
+        # # split the dataset to test and validation
+        # self.tweet_text_train, tweet_text_temp = train_test_split(self.tweet_text, test_size=0.4,
+        #                                                           random_state=42)
+        # self.tweet_text_test, self.tweet_text_val = train_test_split(tweet_text_temp,
+        #                                                              test_size=0.5,
+        #                                                              random_state=42)
+        #
+        # self.img_resized_train, img_resized_temp = train_test_split(self.img_resized_files,
+        #                                                             test_size=0.4,
+        #                                                             random_state=42)
+        # self.img_resized_test, self.img_resized_val = train_test_split(img_resized_temp,
+        #                                                                test_size=0.5,
+        #                                                                random_state=42)
+        #
+        # self.labels_train, labels_temp = train_test_split(self.labels, test_size=0.4,
+        #                                                   random_state=42)
+        # self.labels_test, self.labels_val = train_test_split(labels_temp, test_size=0.5,
+        #                                                      random_state=42)
 
         # create a slice of the dataset to train
+        # self.train_ids_dataset = tf.data.Dataset.from_tensor_slices(self.ids_train)
+        list_1 = [self.img_resized_train]
+        list_2 = list(self.img_resized_train)
+        self.train_image_text_dataset = tf.data.Dataset.from_tensor_slices(self.image_text_train)
         self.train_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_train)
-        self.train_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_train)
+        self.train_image_dataset = tf.data.Dataset.from_tensor_slices(list_2)
         self.train_image_dataset = self.train_image_dataset.map(load_and_preprocess_image)
-        self.train_labels_dataset = tf.data.Dataset.from_tensor_slices(self.labels_train)
+        self.train_labels_dataset = tf.data.Dataset.from_tensor_slices(list(self.labels_train))
 
         # combine training datasets
         self.train_hatespeech_dataset = tf.data.Dataset.zip(
-            (self.train_text_dataset, self.train_image_dataset, self.train_labels_dataset))
+            (self.train_text_dataset, self.train_image_text_dataset, self.train_image_dataset,
+             self.train_labels_dataset))
         batch_size = 128
         self.train_hatespeech_dataset = self.train_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
         # create a slice of the dataset to test
+        # self.test_ids_dataset = tf.data.Dataset.from_tensor_slices(self.ids_test)
+        self.test_image_text_dataset = tf.data.Dataset.from_tensor_slices(self.image_text_test)
         self.test_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_test)
-        self.test_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_test)
+        self.test_image_dataset = tf.data.Dataset.from_tensor_slices(list(self.img_resized_test))
         self.test_image_dataset = self.test_image_dataset.map(load_and_preprocess_image)
-        self.test_labels_dataset = tf.data.Dataset.from_tensor_slices(self.labels_test)
+        self.test_labels_dataset = tf.data.Dataset.from_tensor_slices(list(self.labels_test))
 
         # combine the test datasets
         self.test_hatespeech_dataset = tf.data.Dataset.zip(
-            (self.test_text_dataset, self.test_image_dataset, self.test_labels_dataset))
+            (self.test_text_dataset, self.test_image_text_dataset, self.test_image_dataset, self.test_labels_dataset))
 
         self.test_hatespeech_dataset = self.test_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
         # create a slice of the dataset to validation
+        # self.val_ids_dataset = tf.data.Dataset.from_tensor_slices(self.ids_val)
+        self.val_image_text_dataset = tf.data.Dataset.from_tensor_slices(self.image_text_val)
         self.val_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_val)
-        self.val_image_dataset = tf.data.Dataset.from_tensor_slices(self.img_resized_val)
+        self.val_image_dataset = tf.data.Dataset.from_tensor_slices(list(self.img_resized_val))
         self.val_image_dataset = self.val_image_dataset.map(load_and_preprocess_image)
-        self.val_labels_dataset = tf.data.Dataset.from_tensor_slices(self.labels_val)
+        self.val_labels_dataset = tf.data.Dataset.from_tensor_slices(list(self.labels_val))
 
         self.val_hatespeech_dataset = tf.data.Dataset.zip({
             'text_data': self.val_text_dataset,
+            'image_text_data': self.val_image_text_dataset,
             'image_data': self.val_image_dataset,
             'label_data': self.val_labels_dataset})
 
         self.val_hatespeech_dataset = self.val_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
-    def converto_to_tokenized_tweet_texts(self, tweet_text):
+    def converto_to_tokenized_tweet_texts(self, text):
         self.tokenizer = Tokenizer(1000)
-        self.tokenizer.fit_on_texts(tweet_text)
-        sequences = self.tokenizer.texts_to_sequences(tweet_text)
+        self.tokenizer.fit_on_texts(text)
+        sequences = self.tokenizer.texts_to_sequences(text)
+        return pad_sequences(sequences)
+
+    def converto_to_tokenized_image_texts(self, text):
+        self.image_text_tokenizer = Tokenizer(1000)
+        self.image_text_tokenizer.fit_on_texts(text)
+        sequences = self.image_text_tokenizer.texts_to_sequences(text)
         return pad_sequences(sequences)
 
     def get_tokenized_tweet_texts(self):

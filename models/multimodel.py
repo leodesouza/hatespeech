@@ -1,11 +1,16 @@
 from keras.models import Model
-from keras.layers import Input, Embedding, LSTM, Dense, Flatten, concatenate
+from keras.layers import Input, Embedding, LSTM, Dense, Flatten, concatenate, Conv2D, MaxPool2D, MaxPooling2D, \
+    GlobalMaxPooling2D, GlobalAveragePooling2D
+from keras.src import regularizers
+from keras.src.applications import InceptionV3
+from keras.src.initializers.initializers import HeNormal
 from keras.src.layers import Dropout, BatchNormalization
 from keras.utils import plot_model
 from keras.callbacks import EarlyStopping
 from data.dataset import DatasetLoader
 import matplotlib.pyplot as plt
-
+import gensim.downloader as api
+import numpy as np
 
 def plot_evaluate_result(eval_metrics):
     pass
@@ -46,37 +51,148 @@ class Hatespeech:
         self.labels = None
         self.max_words = 1000
         self.max_sequence_length = 20
+        # self.w2v_model = api.load('word2vec-google-news-300')
+        self.inception_model = InceptionV3(weights='imagenet',
+                                           include_top=False,
+                                           input_shape=(299, 299, 3))
+        for layer in self.inception_model.layers:
+            layer.trainable = False
 
     def create(self):
+        self.create_model2()
+
+    # def create_model1(self):
+    #     tokenizer = self.dataset_loader.get_tokenized_tweet_texts()
+    #     word_size = len(tokenizer.word_index) + 1
+    #     text_input = Input(shape=(1,), dtype='int32', name='text_input')
+    #     embedded_text = Embedding(input_dim=word_size,
+    #                               output_dim=128,
+    #                               input_length=self.max_sequence_length)(text_input)
+    #     lstm_tweet_text = LSTM(128)(embedded_text)
+    #
+    #     image_input = Input(shape=(224, 224, 3), name='image_input')
+    #     flattened_image = Flatten()(image_input)
+    #     flattened_image = Dropout(0.2)(flattened_image)
+    #
+    #     merged = concatenate([lstm_tweet_text, flattened_image])
+    #     merged = Dense(300, activation='relu')(merged)
+    #     merged = BatchNormalization()(merged)
+    #     merged = Dropout(0.3)(merged)
+    #
+    #     output = Dense(1, activation='sigmoid')(merged)
+    #
+    #     self.model = Model(inputs=[text_input, image_input], outputs=output)
+    #     model_inputs = self.model.input
+    #     for i, input_layer in enumerate(model_inputs):
+    #         print(f"Input {i + 1}:")
+    #         print(f"Name: {input_layer.name}")
+    #         print(f"Shape: {input_layer.shape}")
+    #         print(f"Dtype: {input_layer.dtype}")
+    #         print(f"Data: {input_layer}")
+    #         print()
+
+    # def tokens_to_w2v_embeddings(self, tokens, embedding_dim):
+    #     embedding_matrix = np.zeros((len(tokens), embedding_dim))
+    #     for i, word in enumerate(tokens):
+    #         if word in self.w2v_model:
+    #             embedding_matrix[i] = self.w2v_model[word]
+    #     return embedding_matrix
+
+    def create_lstm_layer_tweet_text(self, text_input):
         tokenizer = self.dataset_loader.get_tokenized_tweet_texts()
         word_size = len(tokenizer.word_index) + 1
-        text_input = Input(shape=(1,), dtype='int32', name='text_input')
+        # embedding_dim = self.w2v_model.vector_size
+        # embedding_matrix = self.tokens_to_w2v_embeddings(tokenizer.word_index, embedding_dim)
         embedded_text = Embedding(input_dim=word_size,
-                                  output_dim=128,
+                                  output_dim=50,
                                   input_length=self.max_sequence_length)(text_input)
-        lstm_text = LSTM(128)(embedded_text)
+        return LSTM(150)(embedded_text)
 
-        image_input = Input(shape=(224, 224, 3), name='image_input')
-        flattened_image = Flatten()(image_input)
-        flattened_image = Dropout(0.2)(flattened_image)
+    def create_lstm_layer_image_text(self, text_input):
+        tokenizer = self.dataset_loader.image_text_tokenizer
+        word_size = len(tokenizer.word_index) + 1
+        # embedding_dim = self.w2v_model.vector_size
+        # embedding_matrix = self.tokens_to_w2v_embeddings(tokenizer.word_index, embedding_dim)
+        embedded_text = Embedding(input_dim=word_size,
+                                  output_dim=50,
+                                  input_length=self.max_sequence_length)(text_input)
+        return LSTM(150)(embedded_text)
 
-        merged = concatenate([lstm_text, flattened_image])
-        merged = Dense(300, activation='relu')(merged)
+    def create_model2(self):
+
+        text_input = Input(shape=(1,), dtype='int32', name='text_input')
+        lstm_text = self.create_lstm_layer_tweet_text(text_input)
+
+        image_text_input = Input(shape=(1,), dtype='int32', name='image_text_input')
+        lstm_image_text = self.create_lstm_layer_image_text(image_text_input)
+
+        image_input = Input(shape=(299, 299, 3), name='image_input')
+        image_features = self.inception_model(image_input)
+        image_features = GlobalAveragePooling2D()(image_features)
+
+        merged = concatenate([lstm_text, lstm_image_text, image_features])
+        merged = Dense(150, activation='relu',
+                       kernel_initializer=HeNormal(),
+                       kernel_regularizer=regularizers.l2(0.1))(merged)
         merged = BatchNormalization()(merged)
-        merged = Dropout(0.3)(merged)
+        merged = Dropout(0.5)(merged)
 
         output = Dense(1, activation='sigmoid')(merged)
 
-        self.model = Model(inputs=[text_input, image_input], outputs=output)
-        model_inputs = self.model.input
-        for i, input_layer in enumerate(model_inputs):
-            print(f"Input {i + 1}:")
-            print(f"Name: {input_layer.name}")
-            print(f"Shape: {input_layer.shape}")
-            print(f"Dtype: {input_layer.dtype}")
-            print(f"Data: {input_layer}")
-            print()
+        self.model = Model(inputs=[text_input, image_text_input,  image_input], outputs=output)
 
+        # model_inputs = self.model.input
+        # for i, input_layer in enumerate(model_inputs):
+        #     print(f"Input {i + 1}:")
+        #     print(f"Name: {input_layer.name}")
+        #     print(f"Shape: {input_layer.shape}")
+        #     print(f"Dtype: {input_layer.dtype}")
+        #     print(f"Data: {input_layer}")
+        #     print()
+
+    # def create_model_3(self):
+    #
+    #     text_input = Input(shape=(1,), dtype='int32', name='text_input')
+    #     lstm_text = self.create_lstm_layer_tweet_text(text_input)
+    #
+    #     image_text_input = Input(shape=(1,), dtype='int32', name='image_text_input')
+    #     lstm_image_text = self.create_lstm_layer_image_text(image_text_input)
+    #
+    #     image_input = Input(shape=(299, 299, 3), name='image_input')
+    #     image_features = self.inception_model(image_input)
+    #     image_features = GlobalAveragePooling2D()(image_features)
+    #
+    #     # conv_1 = Conv2D(32, (3, 3), activation='relu',
+    #     #                 kernel_regularizer=regularizers.l2(0.001))(image_input)
+    #     # pool_1 = MaxPooling2D((2, 2))(conv_1)
+    #     #
+    #     # conv_2 = Conv2D(64, (3, 3), activation='relu',
+    #     #                 kernel_regularizer=regularizers.l2(0.001))(pool_1)
+    #     # pool_2 = MaxPooling2D((2, 2))(conv_2)
+    #     #
+    #     # conv_3 = Conv2D(128, (3, 3), activation='relu',
+    #     #                 kernel_regularizer=regularizers.l2(0.001))(pool_2)
+    #     # pool_3 = MaxPooling2D((2, 2))(conv_3)
+    #     # global_pool = GlobalMaxPooling2D()(pool_3)
+    #
+    #     merged = concatenate([lstm_text, lstm_image_text, image_features])
+    #     merged = Dense(50, activation='relu',
+    #                    kernel_regularizer=regularizers.l2(0.1))(merged)
+    #     merged = BatchNormalization()(merged)
+    #     merged = Dropout(0.5)(merged)
+    #
+    #     output = Dense(1, activation='sigmoid')(merged)
+    #
+    #     self.model = Model(inputs=[text_input, image_text_input, image_input], outputs=output)
+    #
+    #     # model_inputs = self.model.input
+    #     # for i, input_layer in enumerate(model_inputs):
+    #     #     print(f"Input {i + 1}:")
+    #     #     print(f"Name: {input_layer.name}")
+    #     #     print(f"Shape: {input_layer.shape}")
+    #     #     print(f"Dtype: {input_layer.dtype}")
+    #     #     print(f"Data: {input_layer}")
+    #     #     print()
     def build(self):
         # weighted_metrics=[]
         self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
@@ -94,24 +210,30 @@ class Hatespeech:
 
     def train(self):
         iterator = self.dataset_loader.train_hatespeech_dataset.as_numpy_iterator()
-        text_data, image_data, labels = next(iterator)
+        text_data, text_image, image_data, labels = next(iterator)
+        # text_data, image_data, labels = next(iterator)
         val_iterator = next(self.dataset_loader.val_hatespeech_dataset.as_numpy_iterator())
         val_text_data = val_iterator['text_data']
+        val_image_text_data = val_iterator['image_text_data']
         val_image_data = val_iterator['image_data']
         val_labels_data = val_iterator['label_data']
+
         early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
-        training_history = self.model.fit(x=[text_data, image_data],
+
+        training_history = self.model.fit(x=[text_data, text_image, image_data],
                                           y=labels,
-                                          epochs=250,
-                                          validation_data=([val_text_data, val_image_data], val_labels_data),
+                                          epochs=500,
+                                          validation_data=(
+                                          [val_text_data, val_image_text_data, val_image_data], val_labels_data),
                                           callbacks=[early_stopping])
+
         plot_training_result(training_history)
 
     def evaluate(self):
         iterator = self.dataset_loader.test_hatespeech_dataset.as_numpy_iterator()
-        text_test_data, image_test_data, labels_test_data = next(iterator)
+        text_test_data, image_text, image_test_data, labels_test_data = next(iterator)
 
-        results = self.model.evaluate([text_test_data, image_test_data], labels_test_data)
+        results = self.model.evaluate([text_test_data, image_text, image_test_data], labels_test_data)
         plot_evaluate_result(results)
         print("Test loss: ", results[0])
         print("Test accuracy: ", results[1])

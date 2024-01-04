@@ -11,6 +11,8 @@ keras = "*"
 pandas = "*"
 pydot = "*"
 graphviz = "*"
+gensim = "*"
+pillow = "*"
 
 [dev-packages]
 
