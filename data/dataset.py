@@ -1,5 +1,5 @@
+import numpy as np
 from keras_preprocessing.image import ImageDataGenerator
-
 from configs.database import database_path
 import json
 import os
@@ -16,7 +16,7 @@ data_aug = ImageDataGenerator(
     shear_range=0.2,
     zoom_range=0.2,
     horizontal_flip=True,
-    rescale=1./255
+    rescale=1. / 255
 )
 
 
@@ -138,17 +138,12 @@ class DatasetLoader:
         dict_dataset = None
         with open(dataset_file_path, 'r') as file:
             dict_dataset = json.load(file)
-
+        zero_digits = [6] * 6
         img_resized_path = database_path['img_resized_path']
         for key in dict_dataset:
             self.Ids.append(key)
             info = dict_dataset[key]
-            # 0 NotHate - 1 Hate
-            if len(info['labels']) == 1 and info['labels'][0] == 0:
-                self.labels.append(0)
-            else:
-                self.labels.append(1)
-            # self.labels.append(info['labels'])
+            self.labels.append(info['labels'])
             text = info['tweet_text']
             self.tweet_text.append(text)
             img_text_file_path = os.path.join(image_text_path, f'{key}.json')
@@ -163,6 +158,16 @@ class DatasetLoader:
             img_resized_file_path = os.path.join(img_resized_path, f'{key}.jpg')
             self.img_resized_files.append(img_resized_file_path)
 
+        one_hot_encoded = []
+        num_classes = 6
+        for labels in self.labels:
+            one_hot = np.zeros(num_classes)
+            for label in labels:
+                one_hot[label] = 1
+            one_hot_encoded.append(one_hot)
+
+        binary_labels = np.array(one_hot_encoded)
+        self.labels = binary_labels
         combined_data = list(zip(self.Ids, self.tweet_text, self.image_text, self.img_resized_files, self.labels))
         train_combined_data, combined_data_temp, = train_test_split(combined_data, test_size=0.4, random_state=42)
         test_combined_data, val_combined_data, = train_test_split(combined_data_temp, test_size=0.5, random_state=42)
@@ -182,29 +187,6 @@ class DatasetLoader:
         self.image_text_val = self.converto_to_tokenized_image_texts(self.image_text_val)
         self.image_text_train = self.converto_to_tokenized_image_texts(self.image_text_train)
 
-        # # self.labels = self.label_encoder.fit_transform(self.labels)
-        # # split the dataset to test and validation
-        # self.tweet_text_train, tweet_text_temp = train_test_split(self.tweet_text, test_size=0.4,
-        #                                                           random_state=42)
-        # self.tweet_text_test, self.tweet_text_val = train_test_split(tweet_text_temp,
-        #                                                              test_size=0.5,
-        #                                                              random_state=42)
-        #
-        # self.img_resized_train, img_resized_temp = train_test_split(self.img_resized_files,
-        #                                                             test_size=0.4,
-        #                                                             random_state=42)
-        # self.img_resized_test, self.img_resized_val = train_test_split(img_resized_temp,
-        #                                                                test_size=0.5,
-        #                                                                random_state=42)
-        #
-        # self.labels_train, labels_temp = train_test_split(self.labels, test_size=0.4,
-        #                                                   random_state=42)
-        # self.labels_test, self.labels_val = train_test_split(labels_temp, test_size=0.5,
-        #                                                      random_state=42)
-
-        # create a slice of the dataset to train
-        # self.train_ids_dataset = tf.data.Dataset.from_tensor_slices(self.ids_train)
-        list_1 = [self.img_resized_train]
         list_2 = list(self.img_resized_train)
         self.train_image_text_dataset = tf.data.Dataset.from_tensor_slices(self.image_text_train)
         self.train_text_dataset = tf.data.Dataset.from_tensor_slices(self.tweet_text_train)

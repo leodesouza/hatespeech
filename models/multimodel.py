@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import gensim.downloader as api
 import numpy as np
 
+
 def plot_evaluate_result(eval_metrics):
     pass
 
@@ -106,7 +107,7 @@ class Hatespeech:
         embedded_text = Embedding(input_dim=word_size,
                                   output_dim=50,
                                   input_length=self.max_sequence_length)(text_input)
-        return LSTM(150)(embedded_text)
+        return LSTM(25)(embedded_text)
 
     def create_lstm_layer_image_text(self, text_input):
         tokenizer = self.dataset_loader.image_text_tokenizer
@@ -116,30 +117,44 @@ class Hatespeech:
         embedded_text = Embedding(input_dim=word_size,
                                   output_dim=50,
                                   input_length=self.max_sequence_length)(text_input)
-        return LSTM(150)(embedded_text)
+        return LSTM(25)(embedded_text)
 
     def create_model2(self):
-
         text_input = Input(shape=(1,), dtype='int32', name='text_input')
         lstm_text = self.create_lstm_layer_tweet_text(text_input)
 
         image_text_input = Input(shape=(1,), dtype='int32', name='image_text_input')
         lstm_image_text = self.create_lstm_layer_image_text(image_text_input)
 
+        lstm_merged = concatenate([lstm_text, lstm_image_text])
+
         image_input = Input(shape=(299, 299, 3), name='image_input')
         image_features = self.inception_model(image_input)
         image_features = GlobalAveragePooling2D()(image_features)
 
-        merged = concatenate([lstm_text, lstm_image_text, image_features])
-        merged = Dense(150, activation='relu',
-                       kernel_initializer=HeNormal(),
-                       kernel_regularizer=regularizers.l2(0.1))(merged)
-        merged = BatchNormalization()(merged)
-        merged = Dropout(0.5)(merged)
+        merged = concatenate([lstm_merged, image_features])
+        hidden1 = Dense(84, activation='relu',
+                        kernel_initializer=HeNormal(),
+                        kernel_regularizer=regularizers.l2(0.1))(merged)
+        hidden1 = BatchNormalization()(hidden1)
+        # hidden1 = Dropout(0.5)(hidden1)
+        #
+        # hidden2 = Dense(50, activation='relu',
+        #                 kernel_initializer=HeNormal(),
+        #                 kernel_regularizer=regularizers.l2(0.1))(hidden1)
+        # hidden2 = BatchNormalization()(hidden2)
+        # hidden2 = Dropout(0.3)(hidden2)
+        #
+        # hidden3 = Dense(50, activation='relu',
+        #                 kernel_initializer=HeNormal(),
+        #                 kernel_regularizer=regularizers.l2(0.1))(hidden2)
+        # hidden3 = BatchNormalization()(hidden3)
+        # hidden3 = Dropout(0.3)(hidden3)
 
-        output = Dense(1, activation='sigmoid')(merged)
+        # output = Dense(1, activation='sigmoid')(hidden2)
+        output = Dense(6, activation='softmax')(hidden1)
 
-        self.model = Model(inputs=[text_input, image_text_input,  image_input], outputs=output)
+        self.model = Model(inputs=[text_input, image_text_input, image_input], outputs=output)
 
         # model_inputs = self.model.input
         # for i, input_layer in enumerate(model_inputs):
@@ -195,7 +210,8 @@ class Hatespeech:
     #     #     print()
     def build(self):
         # weighted_metrics=[]
-        self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        # self.model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        self.model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
         self.model.summary()
         plot_model(self.model, show_shapes=True, to_file='model.png', show_layer_names=True)
 
@@ -222,9 +238,9 @@ class Hatespeech:
 
         training_history = self.model.fit(x=[text_data, text_image, image_data],
                                           y=labels,
-                                          epochs=500,
+                                          epochs=2,
                                           validation_data=(
-                                          [val_text_data, val_image_text_data, val_image_data], val_labels_data),
+                                              [val_text_data, val_image_text_data, val_image_data], val_labels_data),
                                           callbacks=[early_stopping])
 
         plot_training_result(training_history)
