@@ -27,6 +27,8 @@ def load_and_preprocess_image(image_path_file):
     target_size = (299, 299)
     img = tf.image.resize(img, target_size)
     # img = data_aug.random_transform(img)
+
+    # img = tf.image.rgb_to_grayscale(img)
     img /= 255.0  # normalize to [0,1]
     # img = tf.io.read_file(image_path_file)
     # print(f'IMAGE FILE{image_path_file}')
@@ -39,6 +41,8 @@ def load_and_preprocess_image(image_path_file):
 
 class DatasetLoader:
     def __init__(self):
+        self.tweet_text_sequences = None
+        self.text_from_images_sequences = None
         self.image_text_tokenizer = None
         self.val_image_text_dataset = None
         self.val_ids_dataset = None
@@ -232,16 +236,18 @@ class DatasetLoader:
         self.val_hatespeech_dataset = self.val_hatespeech_dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
     def converto_to_tokenized_tweet_texts(self, text):
-        self.tokenizer = Tokenizer(1000)
+        self.tokenizer = Tokenizer()
         self.tokenizer.fit_on_texts(text)
         sequences = self.tokenizer.texts_to_sequences(text)
-        return pad_sequences(sequences)
+        self.tweet_text_sequences = pad_sequences(sequences)
+        return self.tweet_text_sequences
 
     def converto_to_tokenized_image_texts(self, text):
-        self.image_text_tokenizer = Tokenizer(1000)
+        self.image_text_tokenizer = Tokenizer()
         self.image_text_tokenizer.fit_on_texts(text)
         sequences = self.image_text_tokenizer.texts_to_sequences(text)
-        return pad_sequences(sequences)
+        self.text_from_images_sequences = pad_sequences(sequences)
+        return self.text_from_images_sequences
 
     def get_tokenized_tweet_texts(self):
         if not self.tokenizer or not isinstance(self.tokenizer, Tokenizer):

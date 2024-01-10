@@ -13,6 +13,7 @@ pydot = "*"
 graphviz = "*"
 gensim = "*"
 pillow = "*"
+seaborn = "*"
 
 [dev-packages]
 

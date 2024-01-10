@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Model config in json format"""
 
-CFG = {
+config = {
     "data": {
         "path": "oxford_iiit_pet:3.*.*",
         "image_size": 128,
@@ -27,5 +27,6 @@ CFG = {
             "kernels": 3
         },
         "output": 3
-    }
+    },
+    "glove_file_100d": "/home/leonardosouza/projects/hatespeech_dataset/glove.twitter.27B.100d.txt"
 }

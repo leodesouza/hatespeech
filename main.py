@@ -1,4 +1,4 @@
-from configs.training_hyperparameters_config import CFG
+from configs.training_hyperparameters_config import config
 from data.dataset import DatasetLoader
 from models.multimodel import Hatespeech
 

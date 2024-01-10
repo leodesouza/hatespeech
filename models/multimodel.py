@@ -5,16 +5,30 @@ from keras.src import regularizers
 from keras.src.applications import InceptionV3
 from keras.src.initializers.initializers import HeNormal
 from keras.src.layers import Dropout, BatchNormalization
+from keras.src.preprocessing.text import Tokenizer
 from keras.utils import plot_model
 from keras.callbacks import EarlyStopping
+from keras_preprocessing.sequence import pad_sequences
+from sklearn.metrics import confusion_matrix
+import seaborn as sns
+
+from configs.training_hyperparameters_config import config
 from data.dataset import DatasetLoader
 import matplotlib.pyplot as plt
 import gensim.downloader as api
 import numpy as np
 
 
-def plot_evaluate_result(eval_metrics):
-    pass
+def load_glove_embeddings(embedding_dim):
+    glove_file_path = config['glove_file_100d']
+    embedding_index = {}
+    with open(glove_file_path, encoding='utf-8') as file:
+        for line in file:
+            values = line.split()
+            word = values[0]
+            coefs = np.asarray(values[1:], dtype='float32')
+            embedding_index[word] = coefs
+    return embedding_index
 
 
 def plot_training_result(training_history):
@@ -61,7 +75,7 @@ class Hatespeech:
 
     def create(self):
         # self.create_model2()
-        self.create_model4()
+        self.create_model2()
 
     # def create_model1(self):
     #     tokenizer = self.dataset_loader.get_tokenized_tweet_texts()
@@ -101,14 +115,24 @@ class Hatespeech:
     #     return embedding_matrix
 
     def create_lstm_layer_tweet_text(self, text_input):
-        tokenizer = self.dataset_loader.get_tokenized_tweet_texts()
-        word_size = len(tokenizer.word_index) + 1
-        # embedding_dim = self.w2v_model.vector_size
-        # embedding_matrix = self.tokens_to_w2v_embeddings(tokenizer.word_index, embedding_dim)
-        embedded_text = Embedding(input_dim=word_size,
-                                  output_dim=50,
-                                  input_length=self.max_sequence_length)(text_input)
-        return LSTM(150)(embedded_text)
+        word_index = self.dataset_loader.tokenizer.word_index
+        sequences = self.dataset_loader.tweet_text_sequences
+        max_sequence_length = max([len(seq) for seq in sequences])
+
+        embedding_dim = 100
+        embedding_index = load_glove_embeddings(embedding_dim)
+        embedding_matrix = np.zeros((len(word_index) + 1, embedding_dim))
+        for word, i in word_index.items():
+            embedding_vector = embedding_index.get(word)
+            if embedding_vector is not None:
+                embedding_matrix[i] = embedding_vector
+
+        embedded_text = Embedding(len(word_index) + 1,
+                                  embedding_dim,
+                                  weights=[embedding_matrix],
+                                  input_length=max_sequence_length,
+                                  trainable=False)(text_input)
+        return LSTM(100)(embedded_text)
 
     def create_lstm_layer_image_text(self, text_input):
         tokenizer = self.dataset_loader.image_text_tokenizer
@@ -118,7 +142,17 @@ class Hatespeech:
         embedded_text = Embedding(input_dim=word_size,
                                   output_dim=50,
                                   input_length=self.max_sequence_length)(text_input)
-        return LSTM(150)(embedded_text)
+        return LSTM(50)(embedded_text)
+
+    # def create_lstm_layer_image_text(self, text_input):
+    #     tokenizer = self.dataset_loader.image_text_tokenizer
+    #     word_size = len(tokenizer.word_index) + 1
+    #     # embedding_dim = self.w2v_model.vector_size
+    #     # embedding_matrix = self.tokens_to_w2v_embeddings(tokenizer.word_index, embedding_dim)
+    #     embedded_text = Embedding(input_dim=word_size,
+    #                               output_dim=50,
+    #                               input_length=self.max_sequence_length)(text_input)
+    #     return LSTM(150)(embedded_text)
 
     def create_model2(self):
         text_input = Input(shape=(1,), dtype='int32', name='text_input')
@@ -133,27 +167,48 @@ class Hatespeech:
         image_features = self.inception_model(image_input)
         image_features = GlobalAveragePooling2D()(image_features)
 
+        # kernel_regularizer = regularizers.l2(0.1)
+        # kernel_initializer=HeNormal()
         merged = concatenate([lstm_merged, image_features])
-        hidden1 = Dense(128, activation='relu',
+        hidden1 = Dense(300, activation='relu',
                         kernel_initializer=HeNormal(),
                         kernel_regularizer=regularizers.l2(0.1))(merged)
+
         hidden1 = BatchNormalization()(hidden1)
-        # hidden1 = Dropout(0.5)(hidden1)
-        #
-        # hidden2 = Dense(50, activation='relu',
-        #                 kernel_initializer=HeNormal(),
-        #                 kernel_regularizer=regularizers.l2(0.1))(hidden1)
-        # hidden2 = BatchNormalization()(hidden2)
-        # hidden2 = Dropout(0.3)(hidden2)
-        #
-        # hidden3 = Dense(50, activation='relu',
-        #                 kernel_initializer=HeNormal(),
-        #                 kernel_regularizer=regularizers.l2(0.1))(hidden2)
-        # hidden3 = BatchNormalization()(hidden3)
-        # hidden3 = Dropout(0.3)(hidden3)
+        hidden1 = Dropout(0.3)(hidden1)
+
+        hidden2 = Dense(128, activation='relu',
+                        kernel_initializer=HeNormal(),
+                        kernel_regularizer=regularizers.l2(0.1))(hidden1)
+        hidden2 = BatchNormalization()(hidden2)
+        hidden2 = Dropout(0.3)(hidden2)
+
+        hidden3 = Dense(128, activation='relu',
+                        kernel_initializer=HeNormal(),
+                        kernel_regularizer=regularizers.l2(0.1))(hidden2)
+        hidden3 = BatchNormalization()(hidden3)
+        hidden3 = Dropout(0.3)(hidden3)
+
+        hidden4 = Dense(128, activation='relu',
+                        kernel_initializer=HeNormal(),
+                        kernel_regularizer=regularizers.l2(0.1))(hidden3)
+        hidden4 = BatchNormalization()(hidden4)
+        hidden4 = Dropout(0.2)(hidden4)
+
+        hidden5 = Dense(128, activation='relu',
+                        kernel_initializer=HeNormal(),
+                        kernel_regularizer=regularizers.l2(0.1))(hidden4)
+        hidden5 = BatchNormalization()(hidden5)
+        hidden5 = Dropout(0.1)(hidden5)
+
+        hidden6 = Dense(128, activation='relu',
+                        kernel_initializer=HeNormal(),
+                        kernel_regularizer=regularizers.l2(0.1))(hidden5)
+        hidden6 = BatchNormalization()(hidden6)
+        hidden6 = Dropout(0.1)(hidden6)
 
         # output = Dense(1, activation='sigmoid')(hidden2)
-        output = Dense(6, activation='softmax')(hidden1)
+        output = Dense(6, activation='softmax')(hidden6)
 
         self.model = Model(inputs=[text_input, image_text_input, image_input], outputs=output)
 
@@ -166,49 +221,48 @@ class Hatespeech:
         #     print(f"Data: {input_layer}")
         #     print()
 
-    # def create_model_3(self):
-    #
-    #     text_input = Input(shape=(1,), dtype='int32', name='text_input')
-    #     lstm_text = self.create_lstm_layer_tweet_text(text_input)
-    #
-    #     image_text_input = Input(shape=(1,), dtype='int32', name='image_text_input')
-    #     lstm_image_text = self.create_lstm_layer_image_text(image_text_input)
-    #
-    #     image_input = Input(shape=(299, 299, 3), name='image_input')
-    #     image_features = self.inception_model(image_input)
-    #     image_features = GlobalAveragePooling2D()(image_features)
-    #
-    #     # conv_1 = Conv2D(32, (3, 3), activation='relu',
-    #     #                 kernel_regularizer=regularizers.l2(0.001))(image_input)
-    #     # pool_1 = MaxPooling2D((2, 2))(conv_1)
-    #     #
-    #     # conv_2 = Conv2D(64, (3, 3), activation='relu',
-    #     #                 kernel_regularizer=regularizers.l2(0.001))(pool_1)
-    #     # pool_2 = MaxPooling2D((2, 2))(conv_2)
-    #     #
-    #     # conv_3 = Conv2D(128, (3, 3), activation='relu',
-    #     #                 kernel_regularizer=regularizers.l2(0.001))(pool_2)
-    #     # pool_3 = MaxPooling2D((2, 2))(conv_3)
-    #     # global_pool = GlobalMaxPooling2D()(pool_3)
-    #
-    #     merged = concatenate([lstm_text, lstm_image_text, image_features])
-    #     merged = Dense(50, activation='relu',
-    #                    kernel_regularizer=regularizers.l2(0.1))(merged)
-    #     merged = BatchNormalization()(merged)
-    #     merged = Dropout(0.5)(merged)
-    #
-    #     output = Dense(1, activation='sigmoid')(merged)
-    #
-    #     self.model = Model(inputs=[text_input, image_text_input, image_input], outputs=output)
-    #
-    #     # model_inputs = self.model.input
-    #     # for i, input_layer in enumerate(model_inputs):
-    #     #     print(f"Input {i + 1}:")
-    #     #     print(f"Name: {input_layer.name}")
-    #     #     print(f"Shape: {input_layer.shape}")
-    #     #     print(f"Dtype: {input_layer.dtype}")
-    #     #     print(f"Data: {input_layer}")
-    #     #     print()
+    def create_model_3(self):
+        text_input = Input(shape=(1,), dtype='int32', name='text_input')
+        lstm_text = self.create_lstm_layer_tweet_text(text_input)
+
+        image_text_input = Input(shape=(1,), dtype='int32', name='image_text_input')
+        lstm_image_text = self.create_lstm_layer_image_text(image_text_input)
+
+        image_input = Input(shape=(299, 299, 3), name='image_input')
+        # image_features = self.inception_model(image_input)
+        # image_features = GlobalAveragePooling2D()(image_features)
+
+        conv_1 = Conv2D(32, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(image_input)
+        pool_1 = MaxPooling2D((2, 2))(conv_1)
+
+        conv_2 = Conv2D(50, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_1)
+        pool_2 = MaxPooling2D((2, 2))(conv_2)
+
+        conv_3 = Conv2D(30, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_2)
+        pool_3 = MaxPooling2D((2, 2))(conv_3)
+        global_pool = GlobalMaxPooling2D()(pool_3)
+
+        merged = concatenate([lstm_text, lstm_image_text, global_pool])
+        merged = Dense(40, activation='relu',
+                       kernel_regularizer=regularizers.l2(0.1))(merged)
+        merged = BatchNormalization()(merged)
+        merged = Dropout(0.5)(merged)
+
+        output = Dense(6, activation='softmax')(merged)
+
+        self.model = Model(inputs=[text_input, image_text_input, image_input], outputs=output)
+
+        # model_inputs = self.model.input
+        # for i, input_layer in enumerate(model_inputs):
+        #     print(f"Input {i + 1}:")
+        #     print(f"Name: {input_layer.name}")
+        #     print(f"Shape: {input_layer.shape}")
+        #     print(f"Dtype: {input_layer.dtype}")
+        #     print(f"Data: {input_layer}")
+        #     print()
 
     def create_model4(self):
         text_input = Input(shape=(1,), dtype='int32', name='text_input')
@@ -218,31 +272,37 @@ class Hatespeech:
         lstm_image_text = self.create_lstm_layer_image_text(image_text_input)
 
         image_input = Input(shape=(299, 299, 3), name='image_input')
-        image_features = self.inception_model(image_input)
-        image_features = GlobalAveragePooling2D()(image_features)
+        # image_features = self.inception_model(image_input)
+        # image_features = GlobalAveragePooling2D()(image_features)
 
-        merged = concatenate([lstm_text, lstm_image_text, image_features])
-        merged = Dense(150, activation='relu',
-                       kernel_initializer=HeNormal(),
+        conv_1 = Conv2D(32, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(image_input)
+        pool_1 = MaxPooling2D((2, 2))(conv_1)
+
+        conv_2 = Conv2D(50, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_1)
+        pool_2 = MaxPooling2D((2, 2))(conv_2)
+
+        conv_3 = Conv2D(30, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_2)
+        pool_3 = MaxPooling2D((2, 2))(conv_3)
+
+        conv_4 = Conv2D(30, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_3)
+        pool_4 = MaxPooling2D((2, 2))(conv_4)
+
+        conv_5 = Conv2D(30, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_4)
+        pool_5 = MaxPooling2D((2, 2))(conv_5)
+
+        global_pool = GlobalMaxPooling2D()(pool_5)
+
+        merged = concatenate([lstm_text, lstm_image_text, global_pool])
+        merged = Dense(40, activation='relu',
                        kernel_regularizer=regularizers.l2(0.1))(merged)
         merged = BatchNormalization()(merged)
-        merged = Dropout(0.5)(merged)
+        merged = Dropout(0.3)(merged)
 
-        # hidden1 = Dropout(0.5)(hidden1)
-        #
-        # hidden2 = Dense(50, activation='relu',
-        #                 kernel_initializer=HeNormal(),
-        #                 kernel_regularizer=regularizers.l2(0.1))(hidden1)
-        # hidden2 = BatchNormalization()(hidden2)
-        # hidden2 = Dropout(0.3)(hidden2)
-        #
-        # hidden3 = Dense(50, activation='relu',
-        #                 kernel_initializer=HeNormal(),
-        #                 kernel_regularizer=regularizers.l2(0.1))(hidden2)
-        # hidden3 = BatchNormalization()(hidden3)
-        # hidden3 = Dropout(0.3)(hidden3)
-
-        # output = Dense(1, activation='sigmoid')(hidden2)
         output = Dense(6, activation='softmax')(merged)
 
         self.model = Model(inputs=[text_input, image_text_input, image_input], outputs=output)
@@ -277,7 +337,7 @@ class Hatespeech:
 
         training_history = self.model.fit(x=[text_data, text_image, image_data],
                                           y=labels,
-                                          epochs=100,
+                                          epochs=250,
                                           validation_data=(
                                               [val_text_data, val_image_text_data, val_image_data], val_labels_data),
                                           callbacks=[early_stopping])
@@ -289,7 +349,20 @@ class Hatespeech:
         text_test_data, image_text, image_test_data, labels_test_data = next(iterator)
 
         results = self.model.evaluate([text_test_data, image_text, image_test_data], labels_test_data)
-        plot_evaluate_result(results)
+
         print("Test loss: ", results[0])
         print("Test accuracy: ", results[1])
-        pass
+        self.predict(text_test_data, image_text, image_test_data, labels_test_data)
+
+    def predict(self, test_text_data, test_image_text_data, test_imagem_data, labels_data):
+        predictions = self.model.predict([test_text_data, test_image_text_data, test_imagem_data])
+        predicted_labels = np.argmax(predictions, axis=1)
+        conf_matrix = confusion_matrix(np.argmax(labels_data, axis=1), predicted_labels)
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues',
+                    xticklabels=['Não c.d ódio', 'Racista', 'Sexista', 'Homofóbico', 'Religioso', 'Outros'],
+                    yticklabels=['Não c.d ódio', 'Racista', 'Sexista', 'Homofóbico', 'Religioso', 'Outros'])
+        plt.xlabel('Saída Predita')
+        plt.ylabel('Saída Real'),
+        plt.title('Matriz de Confusão')
+        plt.savefig('matriz_confusao.png')
