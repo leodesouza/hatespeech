@@ -1,5 +1,6 @@
 from keras.models import Model
-from keras.layers import Input, Embedding, LSTM, Dense, concatenate, GlobalAveragePooling2D
+from keras.layers import Input, Embedding, LSTM, Dense, Flatten, concatenate, Conv2D, MaxPool2D, MaxPooling2D, \
+    GlobalMaxPooling2D, GlobalAveragePooling2D
 from keras.src import regularizers
 from keras.src.applications import InceptionV3
 from keras.src.initializers.initializers import HeNormal
@@ -99,7 +100,7 @@ class Hatespeech:
                                   input_length=self.max_sequence_length)(text_input)
         return LSTM(100)(embedded_text)
 
-    def create_model(self):
+    def create_model2(self):
         text_input = Input(shape=(1,), dtype='int32', name='text_input')
         lstm_text = self.create_lstm_layer_tweet_text(text_input)
 
@@ -111,30 +112,62 @@ class Hatespeech:
         image_input = Input(shape=(299, 299, 3), name='image_input')
         image_features = self.inception_model(image_input)
         image_features = GlobalAveragePooling2D()(image_features)
+        # image_features = Dropout(0.5)(image_features)
 
+        # kernel_regularizer = regularizers.l2(0.1)
+        # kernel_initializer=HeNormal()
         merged = concatenate([lstm_merged, image_features])
-        hidden1 = Dense(2348, activation='relu',
+        hidden1 = Dense(1024, activation='relu',
                         kernel_initializer=HeNormal(),
                         kernel_regularizer=regularizers.l2(0.1))(merged)
 
         hidden1 = BatchNormalization()(hidden1)
         hidden1 = Dropout(0.5)(hidden1)
 
-        hidden2 = Dense(1024, activation='relu',
-                        kernel_initializer=HeNormal(),
-                        kernel_regularizer=regularizers.l2(0.1))(hidden1)
+        output = Dense(6, activation='softmax')(hidden1)
+        self.model = Model(inputs=[text_input, image_text_input, image_input], outputs=output)
 
-        hidden2 = BatchNormalization()(hidden2)
-        hidden2 = Dropout(0.5)(hidden2)
+    def create_model4(self):
+        text_input = Input(shape=(1,), dtype='int32', name='text_input')
+        lstm_text = self.create_lstm_layer_tweet_text(text_input)
 
-        hidden3 = Dense(512, activation='relu',
-                        kernel_initializer=HeNormal(),
-                        kernel_regularizer=regularizers.l2(0.1))(hidden2)
+        image_text_input = Input(shape=(1,), dtype='int32', name='image_text_input')
+        lstm_image_text = self.create_lstm_layer_image_text(image_text_input)
 
-        hidden3 = BatchNormalization()(hidden3)
-        hidden3 = Dropout(0.5)(hidden3)
+        image_input = Input(shape=(299, 299, 3), name='image_input')
+        # image_features = self.inception_model(image_input)
+        # image_features = GlobalAveragePooling2D()(image_features)
 
-        output = Dense(6, activation='softmax')(hidden3)
+        conv_1 = Conv2D(32, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(image_input)
+        pool_1 = MaxPooling2D((2, 2))(conv_1)
+
+        conv_2 = Conv2D(50, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_1)
+        pool_2 = MaxPooling2D((2, 2))(conv_2)
+
+        conv_3 = Conv2D(30, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_2)
+        pool_3 = MaxPooling2D((2, 2))(conv_3)
+
+        conv_4 = Conv2D(30, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_3)
+        pool_4 = MaxPooling2D((2, 2))(conv_4)
+
+        conv_5 = Conv2D(30, (3, 3), activation='relu',
+                        kernel_regularizer=regularizers.l2(0.001))(pool_4)
+        pool_5 = MaxPooling2D((2, 2))(conv_5)
+
+        global_pool = GlobalMaxPooling2D()(pool_5)
+
+        merged = concatenate([lstm_text, lstm_image_text, global_pool])
+        merged = Dense(40, activation='relu',
+                       kernel_regularizer=regularizers.l2(0.1))(merged)
+        merged = BatchNormalization()(merged)
+        merged = Dropout(0.3)(merged)
+
+        output = Dense(6, activation='softmax')(merged)
+
         self.model = Model(inputs=[text_input, image_text_input, image_input], outputs=output)
 
     def build(self):
