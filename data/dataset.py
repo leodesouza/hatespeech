@@ -22,20 +22,10 @@ data_aug = ImageDataGenerator(
 
 def load_and_preprocess_image(image_path_file):
     img = tf.io.read_file(image_path_file)
-    # img = tf.image.decode_jpeg(img, channels=3)
     img = tf.image.decode_jpeg(img, channels=3)
     target_size = (299, 299)
     img = tf.image.resize(img, target_size)
-    # img = data_aug.random_transform(img)
-
-    # img = tf.image.rgb_to_grayscale(img)
     img /= 255.0  # normalize to [0,1]
-    # img = tf.io.read_file(image_path_file)
-    # print(f'IMAGE FILE{image_path_file}')
-    # img = tf.image.decode_image(img, channels=3)
-    # img = tf.image.resize(img, (299, 299))
-    # img = tf.cast(img, tf.float32)
-    # img = data_aug.random_transform(img)
     return img
 
 
